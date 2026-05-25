@@ -84,6 +84,14 @@ void updateVariasi() {
 
 // ==== WEB SERVER API HANDLERS ====
 
+bool pendingNotification = false;
+String pendingMessage = "";
+
+void notifyTelegramAsync(String msg) {
+  pendingMessage = msg;
+  pendingNotification = true;
+}
+
 void addCorsHeaders() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -120,6 +128,7 @@ void handleSetRelay() {
       variasiMode = 0;
       setRelay(id, state);
       server.send(200, "application/json", "{\\"success\\":true}");
+      notifyTelegramAsync("🌐 *Web Control*\\n" + relayName[id] + " *" + (state ? "ON" : "OFF") + "* via Web UI");
       return;
     }
   }
@@ -133,6 +142,7 @@ void handleSetAll() {
     variasiMode = 0;
     for(int i=0; i<4; i++) setRelay(i, state);
     server.send(200, "application/json", "{\\"success\\":true}");
+    notifyTelegramAsync("🌐 *Web Control*\\nSemua relay *" + String(state ? "ON" : "OFF") + "* via Web UI");
     return;
   }
   server.send(400, "application/json", "{\\"error\\":\\"Invalid arguments\\"}");
@@ -143,8 +153,14 @@ void handleSetVariasi() {
   if (server.hasArg("mode")) {
     int mode = server.arg("mode").toInt();
     variasiMode = mode;
-    if(mode == 0) allRelayOff();
-    server.send(200, "application/json", "{\\"success\\":true}");
+    if(mode == 0) {
+      allRelayOff();
+      server.send(200, "application/json", "{\\"success\\":true}");
+      notifyTelegramAsync("🌐 *Web Control*\\nMode Variasi *dihentikan* via Web UI");
+    } else {
+      server.send(200, "application/json", "{\\"success\\":true}");
+      notifyTelegramAsync("🌐 *Web Control*\\nMode Variasi *" + String(mode) + "* diaktifkan via Web UI");
+    }
     return;
   }
   server.send(400, "application/json", "{\\"error\\":\\"Invalid arguments\\"}");
@@ -313,6 +329,11 @@ void setup() {
 void loop() {
   updateVariasi();
   server.handleClient(); // Menerima request dari Web/Direct IP
+
+  if (pendingNotification) {
+    bot.sendMessage(CHAT_ID, pendingMessage, "Markdown");
+    pendingNotification = false;
+  }
 
   if (millis() > lastTimeBotRan + botRequestDelay) {
     int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
